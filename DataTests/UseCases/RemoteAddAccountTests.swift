@@ -37,7 +37,23 @@ final class RemoteAddAccountTests: XCTestCase {
         wait(for: [exp], timeout: 1)
     }
     
-    func test_add_shouldCompletesWitAccountIfClientCompletesWithData() throws {
+    func test_add_shouldCompletesWithAccountIfClientCompletesWithValidData() throws {
+        let (sut, httpClient) = makeSUT()
+        
+        let exp = expectation(description: "waiting")
+        sut.add(addAccountModel: makeAddAccountModel()) { result in
+            switch result {
+            case .success: XCTFail("Não deveria cair aqui, foi erro do dev: o esperado era um erro e o recebido foi \(result)")
+            case .failure(let error): XCTAssertEqual(error, .invalidData)
+            }
+            exp.fulfill()
+        }
+        
+        httpClient.completionWithData(Data("invalid_data".utf8))
+        wait(for: [exp], timeout: 1)
+    }
+    
+    func test_add_shouldCompletesWithErrorIfClientCompletesWithInvalidData() throws {
         let (sut, httpClient) = makeSUT()
         let accountModel = makeAccountModel()
         
@@ -62,6 +78,22 @@ extension RemoteAddAccountTests {
         let sut = RemoteAddAccount(url: url, httpPostClient: httpClient)
         
         return (sut, httpClient)
+    }
+    
+    func expect(_ sut: RemoteAddAccount, completeWith expectedResult: Result<AccountModel, DomainError>, when action: () -> Void) {
+        let exp = expectation(description: "waiting")
+        
+        sut.add(addAccountModel: makeAddAccountModel()) { receivedResult in
+            switch (expectedResult, receivedResult) {
+            case (.failure(let expectedError), .failure(let receivedError)): XCTAssertEqual(expectedError, receivedError)
+            case (.success(let expectedAccount), .success(let receivedAccount)): XCTAssertEqual(expectedAccount, receivedAccount)
+            default: XCTFail("Rolou um erro do dev, o esperado era \(expectedResult) e o recebido foi \(receivedResult)")
+            }
+            exp.fulfill()
+        }
+        
+        action()
+        wait(for: [exp], timeout: 1)
     }
     
     func makeAddAccountModel() -> AddAccountModel {
